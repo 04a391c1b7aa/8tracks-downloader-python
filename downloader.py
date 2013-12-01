@@ -9,7 +9,8 @@ import string
 import sys
 import subprocess
 from urlparse import urlparse
-from ID3 import *
+#from ID3 import *
+import ID3
 
 try:
     import simplejson as json
@@ -200,13 +201,13 @@ while not at_end:
             except ConversionError:
                 print "an error has occured converting track number " + str(song_number) + " to mp3 format, track will be left in m4a format"
         try:
-            id3info = ID3(file_path)
+            id3info = ID3.ID3(file_path)
             #id3info['GENRE'] = ("Unknwn " + playlist_slug).encode("ascii", "ignore").decode()
             id3info['TITLE'] = curr_song_title.encode("ascii", "ignore").decode()
             id3info['ARTIST'] = curr_artist.encode("ascii", "ignore").decode()
             id3info['ALBUM'] = curr_album.encode("ascii", "ignore").decode()
             id3info['YEAR'] = str(curr_year)
-        except InvalidTagError, message:
+        except ID3.InvalidTagError, message:
             print "Invalid ID3 tag:", message
         except:
             print "Unexpected error, tags may be incorrect"
