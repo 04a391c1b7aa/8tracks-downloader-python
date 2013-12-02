@@ -152,11 +152,13 @@ song_number = 1
 m3u = []
 while not at_end:
     #song metadata/info
-    curr_song_url = playlist_loader['set']['track']['track_file_stream_url']
-    curr_artist = playlist_loader['set']['track']['performer']
-    curr_song_title = playlist_loader['set']['track']['name']
-    curr_year = norm_year(playlist_loader['set']['track']['year'])
-    curr_album = playlist_loader['set']['track']['release_name']
+    # FIXME: error handling. What if these values are empty?
+    track = playlist_loader['set'].get('track')
+    curr_song_url = unicode(track['track_file_stream_url'])
+    curr_artist = unicode(track['performer'])
+    curr_song_title = unicode(track['name'])
+    curr_year = norm_year(track['year'])
+    curr_album = unicode(track['release_name'])
     #tracing through redirects
     try:
         urllib2.urlopen(curr_song_url)
@@ -174,9 +176,8 @@ while not at_end:
     #gets the filetype designated by the server
     filetype = parsed_url.path[len(parsed_url.path)-4:len(parsed_url.path)]
 
-    mp3_name = (str(song_number) + u' - ' + curr_artist + u'-' + curr_song_title + u' (' + str(curr_year) + u')' + ".mp3").encode('UTF-8')
-    file_name = (str(song_number) + u' - ' + curr_artist + u'-' + curr_song_title + u' (' + str(curr_year) + u')' + filetype).encode('UTF-8')
-
+    mp3_name = (str(song_number).zfill(2) + u' - ' + curr_artist + u'-' + curr_song_title + u' (' + str(curr_year) + u')' + ".mp3").encode('UTF-8')
+    file_name = (str(song_number).zfill(2) + u' - ' + curr_artist + u'-' + curr_song_title + u' (' + str(curr_year) + u')' + filetype).encode('UTF-8')
     #sanitize mp3_name and file_name
     file_name = ''.join(c for c in file_name if c in valid_chars)
     mp3_name = ''.join(c for c in mp3_name if c in valid_chars)
@@ -203,9 +204,9 @@ while not at_end:
         try:
             id3info = ID3.ID3(file_path)
             #id3info['GENRE'] = ("Unknwn " + playlist_slug).encode("ascii", "ignore").decode()
-            id3info['TITLE'] = curr_song_title.encode("ascii", "ignore").decode()
-            id3info['ARTIST'] = curr_artist.encode("ascii", "ignore").decode()
-            id3info['ALBUM'] = curr_album.encode("ascii", "ignore").decode()
+            id3info['TITLE'] = curr_song_title
+            id3info['ARTIST'] = curr_artist
+            id3info['ALBUM'] = curr_album
             id3info['YEAR'] = str(curr_year)
         except ID3.InvalidTagError, message:
             print "Invalid ID3 tag:", message
