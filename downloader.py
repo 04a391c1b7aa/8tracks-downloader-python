@@ -10,7 +10,11 @@ import sys
 import subprocess
 from urlparse import urlparse
 #from ID3 import *
-import ID3
+#import ID3
+import mutagen.easyid3
+import mutagen.id3
+import mutagen.mp3
+import mutagen.mp4
 
 try:
     import simplejson as json
@@ -22,6 +26,8 @@ try:
 except NameError:
      WindowsError = None
 
+VALID_CHARS = "-_.() %s%s" % (string.ascii_letters, string.digits)
+
 class ConversionError(Exception):
     """Exception raised for error during conversion process
     Attributes:
@@ -31,6 +37,60 @@ class ConversionError(Exception):
     def __init__(self, expr, msg):
         self.expr = expr
         self.msg = msg
+
+
+class Playlist:
+    "Playlist container class for 8tracks playlists."
+    def __init__(self, api, playlist_url):
+        self.current_song_no = 0
+        self.playlist_url = playlist_url
+        if len(api) != 40:
+            raise Exception("Invalid api key %s" % api)
+        else:
+            self.api = api
+        # initialize api and get playtoken
+        api_url = 'http://8tracks.com/sets/new.json?api_key=' + api
+        response = json.load(urllib2.urlopen(api_url))
+        self.play_token = response.get('play_token')
+        data = urllib2.urlopen(self.playlist_url).read()
+        # seach through raw html for string mixes/#######/player, kind of messy, but best method currently
+        matches = re.search(r'mixes/(\d+)/player', data)  
+        if matches.group(0) is not None:
+            #this chooses the first match, its possible that 8tracks could change this later, but this works for now
+            self.playlist_id = matches.group(1)
+        else:
+            raise Exception("invalid URL or 8tracks has updated to break compatibility, if the latter, contact me!")
+        
+        # get playlist "loader" basically the variable that will return song urls and will be iterated through
+        playurl = urllib2.urlopen('http://8tracks.com/sets/'
+                                  + self.play_token + '/play?mix_id=' 
+                                  + self.playlist_id + '&format=jsonh&api_key=' + self.api)
+        self.current_playlist_loader = json.load(playurl)
+
+        # get playlist info
+        info_url = urllib2.urlopen('http://8tracks.com/mixes/'+
+                                   self.playlist_id +
+                                   '.json?api_key='+ self.api)
+        playlist_info = json.load(info_url)
+        self.name = playlist_info['mix'].get('name', "No name")
+        self.slug = playlist_info['mix'].get('slug', "No slug")
+        self.safe_name = filter(lambda c: c in VALID_CHARS, self.name)
+        self.safe_slug = filter(lambda c: c in VALID_CHARS, self.slug)
+
+    def __iter__(self):
+        return self
+
+    def next(self):
+        if self.current_playlist_loader['set']['at_end']:
+            raise StopIteration
+        else:
+            self.current_song_no += 1
+            playurl = urllib2.urlopen('http://8tracks.com/sets/'+ self.play_token 
+                                      + '/next?mix_id='+ self.playlist_id +
+                                      '&format=jsonh&api_key=' + self.api)
+            track = self.current_playlist_loader['set'].get('track')
+            self.current_playlist_loader = json.load(playurl)
+            return track
 
 #stolen from http://stackoverflow.com/questions/273192/python-best-way-to-create-directory-if-it-doesnt-exist-for-file-write
 def ensure_dir(f):  
@@ -70,15 +130,7 @@ def to_mp3(m4a_path):
         return mp3_path
     else:
         raise ConversionError(m4a_path, "mp3 file path does not exist for some reason")
-playlist_loader = ""
-def iterate(playlist_loader):
-    playurl = 'http://8tracks.com/sets/'+play_token+'/next?mix_id='+playlist_id+'&format=jsonh&api_key=' + api
-    url = urllib2.urlopen(playurl)
-    playlist_loader = json.load(url)
-    return playlist_loader
 
-
-valid_chars = "-_.() %s%s" % (string.ascii_letters, string.digits)
 
 pp = pprint.PrettyPrinter(indent=4)
 parse = argparse.ArgumentParser(description = "Get valid playlist url/id and api key")
@@ -88,104 +140,54 @@ parse.add_argument('-d', '--save_directory', required = False, default = "./", h
 parse.add_argument('-mp3', required = False, action = "store_true", help = "if this is present then files will be output in mp3 format")
 
 args = parse.parse_args()
-
-api = args.API_key
 mp3 = args.mp3
-
-if len(api) != 40:
-    sys.exit("invalid api key")
-
-try:
-    urllib2.urlopen(args.playlist_url)
-except:
-    sys.exit("invalid URL")
-    raise 
-
-
-#initialize api and get playtoken
-api_url = 'http://8tracks.com/sets/new.json?api_key='+api
-url = urllib2.urlopen(api_url)
-json_result = json.load(url)
-play_token = json_result[unicode('play_token')]
-
-#get playlist id from the playlist url given
-playlist_url = args.playlist_url
-url = urllib2.urlopen(playlist_url)
-data = url.read()
-matches = re.search(r'mixes/(\d+)/player',data)  #seach through raw html for string mixes/#######/player, kind of messy, but best method currently
-if matches.group(0) is not None:
-    playlist_id = matches.group(1) #this chooses the first match, its possible that 8tracks could change this later, but this works for now
-else:
-    sys.exit("invalid URL or 8tracks has updated to break compatibility, if the latter, contact me")
-
-#get playlist "loader" basically the variable that will return song urls and will be iterated through
-playurl = 'http://8tracks.com/sets/'+play_token+'/play?mix_id='+playlist_id+'&format=jsonh&api_key=' + api
-url = urllib2.urlopen(playurl)
-playlist_loader = json.load(url)
-
-#get playlist info
-playlist = 'http://8tracks.com/mixes/'+playlist_id+'.json?api_key='+api
-url = urllib2.urlopen(playlist)
-playlist_info = json.load(url)
-
-
-#store playlist name from above
-playlist_name = playlist_info['mix']['name']
-playlist_slug = playlist_info['mix']['slug']
-playlist_name = ''.join(c for c in playlist_name if c in valid_chars)
-playlist_slug = ''.join(c for c in playlist_slug if c in valid_chars)
+playlist = Playlist(args.API_key, args.playlist_url)
 
 #get directory ready for some new tunes
-directory = os.path.join(args.save_directory,playlist_slug)
+directory = os.path.join(args.save_directory, playlist.safe_slug)
 
 try:
     ensure_dir(os.path.join(directory, "test.txt"))
 except:
     print "invalid path given, saving to current directory instead"
-    directory = os.path.join(args.save_directory,playlist_name)
+    directory = os.path.join(args.save_directory, playlist.safe_name)
     raise
 
-
-
-at_end = False
-song_number = 1
 m3u = []
-while not at_end:
-    #song metadata/info
+
+for song_number, song in enumerate(playlist, start=1):
+    # song metadata/info
     # FIXME: error handling. What if these values are empty?
-    track = playlist_loader['set'].get('track')
-    curr_song_url = unicode(track['track_file_stream_url'])
-    curr_artist = unicode(track['performer'])
-    curr_song_title = unicode(track['name'])
-    curr_year = norm_year(track['year'])
-    curr_album = unicode(track['release_name'])
-    #tracing through redirects
+    curr_song_url = unicode(song['track_file_stream_url'])
+    curr_artist = unicode(song['performer'])
+    curr_song_title = unicode(song['name'])
+    curr_year = norm_year(song['year'])
+    curr_album = unicode(song['release_name'])
+    # tracing through redirects
     try:
         urllib2.urlopen(curr_song_url)
     except urllib2.HTTPError:
         pp.pprint(playlist_loader)
         print "Song "+ str(song_number) + " not found, playlist includes reference to deleted song"
-        song_number += 1
-        playlist_loader = iterate(playlist_loader)
-        if playlist_loader['set']['at_end'] == True:
-            at_end = True
-
         continue
+
     actual_url = urllib2.urlopen(curr_song_url).geturl()
     parsed_url = urlparse(actual_url)
-    #gets the filetype designated by the server
+    # gets the filetype designated by the server
     filetype = parsed_url.path[len(parsed_url.path)-4:len(parsed_url.path)]
 
-    mp3_name = (str(song_number).zfill(2) + u' - ' + curr_artist + u'-' + curr_song_title + u' (' + str(curr_year) + u')' + ".mp3").encode('UTF-8')
-    file_name = (str(song_number).zfill(2) + u' - ' + curr_artist + u'-' + curr_song_title + u' (' + str(curr_year) + u')' + filetype).encode('UTF-8')
-    #sanitize mp3_name and file_name
-    file_name = ''.join(c for c in file_name if c in valid_chars)
-    mp3_name = ''.join(c for c in mp3_name if c in valid_chars)
+    name_prototype = u"%(number)02d - %(artist)s - %(title)s %(year)d" % {'number' : song_number,
+                                                                              'artist' : curr_artist,
+                                                                              'title'  : curr_song_title,
+                                                                              'year'   : curr_year}
+    # sanitize mp3_name and file_name
+    file_name = filter(lambda c: c in VALID_CHARS, name_prototype + filetype)
+    mp3_name = filter(lambda c: c in VALID_CHARS, name_prototype + ".mp3")
 
-    file_path = os.path.join(directory, unicode(file_name,errors='ignore'))
-    if bool(os.access(file_path, os.F_OK)):
+    file_path = os.path.join(directory, file_name)
+    if os.access(file_path, os.F_OK):
         print "File number "+str(song_number)+" already exists!"
-    elif os.path.isfile(os.path.join(directory, unicode(mp3_name, errors='ignore'))):
+    elif os.path.isfile(os.path.join(directory, mp3_name)):
         print "File number "+str(song_number)+" already exists in mp3 format!"
         file_name = mp3_name
     else:
@@ -201,24 +203,18 @@ while not at_end:
                 file_path = os.path.join(directory, file_name)
             except ConversionError:
                 print "an error has occured converting track number " + str(song_number) + " to mp3 format, track will be left in m4a format"
-        try:
-            id3info = ID3.ID3(file_path)
-            #id3info['GENRE'] = ("Unknwn " + playlist_slug).encode("ascii", "ignore").decode()
-            id3info['TITLE'] = curr_song_title
-            id3info['ARTIST'] = curr_artist
-            id3info['ALBUM'] = curr_album
-            id3info['YEAR'] = str(curr_year)
-        except ID3.InvalidTagError, message:
-            print "Invalid ID3 tag:", message
-        except:
-            print "Unexpected error, tags may be incorrect"
+        elif filetype == ".mp3":
+            tags = mutagen.mp3.MP3(file_path, ID3=mutagen.easyid3.EasyID3)
+        elif filetype == ".m4a":
+            tags = mutagen.mp4.MP4(file_path)
+        tags['title'] = curr_song_title
+        tags['artist'] = curr_artist
+        tags['album'] = curr_album
+        tags['date'] = str(curr_year)
+        tags.save(file_path)
     m3u.append(file_name)
-    song_number += 1
-    playlist_loader = iterate(playlist_loader)
-    if playlist_loader['set']['at_end'] == True:
-        at_end = True
 
-m3u_path = os.path.join(directory, playlist_name + ".m3u")
+m3u_path = os.path.join(directory, playlist.safe_name + ".m3u")
 m3u_file = open(m3u_path, 'w')
 m3u_file.write("\n".join(m3u))
 m3u_file.close()
