@@ -15,6 +15,7 @@ import mutagen.easyid3
 import mutagen.id3
 import mutagen.mp3
 import mutagen.mp4
+import time
 
 try:
     import simplejson as json
@@ -42,6 +43,7 @@ class ConversionError(Exception):
 class Playlist:
     "Playlist container class for 8tracks playlists."
     def __init__(self, api, playlist_url):
+        self.must_sleep = False
         self.current_song_no = 0
         self.playlist_url = playlist_url
         if len(api) != 40:
@@ -54,16 +56,16 @@ class Playlist:
         self.play_token = response.get('play_token')
         data = urllib2.urlopen(self.playlist_url).read()
         # seach through raw html for string mixes/#######/player, kind of messy, but best method currently
-        matches = re.search(r'mixes/(\d+)/player', data)  
+        matches = re.search(r'mixes/(\d+)/player', data)
         if matches.group(0) is not None:
             #this chooses the first match, its possible that 8tracks could change this later, but this works for now
             self.playlist_id = matches.group(1)
         else:
             raise Exception("invalid URL or 8tracks has updated to break compatibility, if the latter, contact me!")
-        
+
         # get playlist "loader" basically the variable that will return song urls and will be iterated through
         playurl = urllib2.urlopen('http://8tracks.com/sets/'
-                                  + self.play_token + '/play?mix_id=' 
+                                  + self.play_token + '/play?mix_id='
                                   + self.playlist_id + '&format=jsonh&api_key=' + self.api)
         self.current_playlist_loader = json.load(playurl)
 
@@ -85,15 +87,34 @@ class Playlist:
             raise StopIteration
         else:
             self.current_song_no += 1
-            playurl = urllib2.urlopen('http://8tracks.com/sets/'+ self.play_token 
-                                      + '/next?mix_id='+ self.playlist_id +
-                                      '&format=jsonh&api_key=' + self.api)
+            url = ('http://8tracks.com/sets/'+ self.play_token
+                   + '/next?mix_id='+ self.playlist_id +
+                     '&format=jsonh&api_key=' + self.api)
+            try:
+                playurl = urllib2.urlopen(url)
+            except urllib2.HTTPError, err:
+                print "Error! %s" % err
+                if err.code == 403:
+                    self.must_sleep = True
+                    message = err.read()
+                    print message
+                    print "Access error! We probably need to wait for the cooldown timer to...cool down. Sleeping..."
+                    time.sleep(210)
+                    print "...attempting fetch again!"
+                    playurl = urllib2.urlopen(url)
+                else:
+                    raise err
+
             track = self.current_playlist_loader['set'].get('track')
             self.current_playlist_loader = json.load(playurl)
+            if self.must_sleep:
+                # fixme: set to actual length of track!
+                print "We have exceeded the max amount of fetches, sleeping..."
+                time.sleep(210)
             return track
 
 #stolen from http://stackoverflow.com/questions/273192/python-best-way-to-create-directory-if-it-doesnt-exist-for-file-write
-def ensure_dir(f):  
+def ensure_dir(f):
     d = os.path.dirname(f)
     if not os.path.exists(d):
         os.makedirs(d)
@@ -212,6 +233,11 @@ for song_number, song in enumerate(playlist, start=1):
         tags['album'] = curr_album
         tags['date'] = str(curr_year)
         tags.save(file_path)
+        length = int(tags.info.length)
+        for i in range(1, length):
+            print "Pretending to play track %d/%d seconds..." % (i, length)
+            time.sleep(1)
+
     m3u.append(file_name)
 
 m3u_path = os.path.join(directory, playlist.safe_name + ".m3u")
