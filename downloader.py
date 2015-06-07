@@ -234,8 +234,8 @@ for song_number, song in enumerate(playlist, start=1):
         tags['date'] = str(curr_year)
         tags.save(file_path)
         length = int(tags.info.length)
-        for i in range(1, length):
-            print ("Pretending to play track %d/%d seconds.          \r" % (i, length)),
+        for i in range(1, length + 1):
+            print ("Pretending to play track: %d/%d seconds.          \r" % (i, length)),
             sys.stdout.flush()
             time.sleep(1)
         print ""
