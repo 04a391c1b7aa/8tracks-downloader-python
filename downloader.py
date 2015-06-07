@@ -235,8 +235,10 @@ for song_number, song in enumerate(playlist, start=1):
         tags.save(file_path)
         length = int(tags.info.length)
         for i in range(1, length):
-            print "Pretending to play track %d/%d seconds..." % (i, length)
+            print ("Pretending to play track %d/%d seconds.          \r" % (i, length)),
+            sys.stdout.flush()
             time.sleep(1)
+        print ""
 
     m3u.append(file_name)
 
