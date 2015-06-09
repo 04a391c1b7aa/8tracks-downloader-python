@@ -75,6 +75,7 @@ class Playlist:
                                    '.json?api_key='+ self.api)
         playlist_info = json.load(info_url)
         self.name = playlist_info['mix'].get('name', "No name")
+        self.image_url = playlist_info['mix'].get('cover_urls').get('original')
         self.slug = playlist_info['mix'].get('slug', "No slug")
         self.safe_name = filter(lambda c: c in VALID_CHARS, self.name)
         self.safe_slug = filter(lambda c: c in VALID_CHARS, self.slug)
@@ -175,6 +176,13 @@ except:
     raise
 
 m3u = []
+
+image_stream = urllib2.urlopen(playlist.image_url)
+real_image_url = urlparse(image_stream.geturl())
+filetype = real_image_url.path[-4:]
+f = open(os.path.join(directory, 'cover' + filetype),'wb')
+f.write(image_stream.read())
+f.close()
 
 for song_number, song in enumerate(playlist, start=1):
     # song metadata/info
