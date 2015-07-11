@@ -205,10 +205,16 @@ for song_number, song in enumerate(playlist, start=1):
     # gets the filetype designated by the server
     filetype = parsed_url.path[len(parsed_url.path)-4:len(parsed_url.path)]
 
-    name_prototype = u"%(number)02d - %(artist)s - %(title)s %(year)d" % {'number' : song_number,
+    if curr_year == 0:
+        name_prototype = u"%(number)02d - %(artist)s - %(title)s" % {'number' : song_number,
+                                                                              'artist' : curr_artist,
+                                                                              'title'  : curr_song_title}
+    else:
+        name_prototype = u"%(number)02d - %(artist)s - %(title)s (%(year)d)" % {'number' : song_number,
                                                                               'artist' : curr_artist,
                                                                               'title'  : curr_song_title,
                                                                               'year'   : curr_year}
+
     # sanitize mp3_name and file_name
     file_name = filter(lambda c: c in VALID_CHARS, name_prototype + filetype)
     mp3_name = filter(lambda c: c in VALID_CHARS, name_prototype + ".mp3")
