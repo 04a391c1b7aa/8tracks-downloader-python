@@ -77,6 +77,9 @@ class Playlist:
         self.name = playlist_info['mix'].get('name', "No name")
         self.image_url = playlist_info['mix'].get('cover_urls').get('original')
         self.slug = playlist_info['mix'].get('slug', "No slug")
+        global tracks_count
+        tracks_count = int(playlist_info['mix'].get('tracks_count', "0"))
+        print "Playlist has " + str(tracks_count) + " tracks."
         self.safe_name = filter(lambda c: c in VALID_CHARS, self.name)
         self.safe_slug = filter(lambda c: c in VALID_CHARS, self.slug)
 
@@ -226,7 +229,7 @@ for song_number, song in enumerate(playlist, start=1):
         print "File number "+str(song_number)+" already exists in mp3 format!"
         file_name = mp3_name
     else:
-        print "Downloading " + file_name
+        print "Downloading " + str(song_number) + "/" + str(tracks_count) + ": " + file_name
         u = urllib2.urlopen(curr_song_url)
         f = open(file_path,'wb')
         f.write(u.read())
