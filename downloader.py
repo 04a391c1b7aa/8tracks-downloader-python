@@ -188,10 +188,10 @@ for song_number, song in enumerate(playlist, start=1):
     # song metadata/info
     # FIXME: error handling. What if these values are empty?
     curr_song_url = unicode(song['track_file_stream_url'])
-    curr_artist = unicode(song['performer'])
-    curr_song_title = unicode(song['name'])
+    curr_artist = unicode(song['performer']).rstrip()
+    curr_song_title = unicode(song['name']).rstrip().rstrip('.')
     curr_year = norm_year(song['year'])
-    curr_album = unicode(song['release_name'])
+    curr_album = unicode(song['release_name']).rstrip()
     # tracing through redirects
     try:
         urllib2.urlopen(curr_song_url)
